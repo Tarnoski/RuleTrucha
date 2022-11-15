@@ -1,0 +1,80 @@
+unit LO_Colas;
+
+interface
+  {Colas:
+  Abstraccion de la libreria ListasSimples. Ejecutando los metodos de esta, con
+  ciertos valores prefijados para los parametros Pos, se le dara una funcionalidad
+  LIFO (Last In/First Out): solo se eliminara/leera al primer registro de la lista,
+  mientras  que los nuevos siempre se insertan al final de la misma.
+  }
+  uses
+    LO_ListasSimples;
+
+  const
+    _POSNULA = LO_ListasSimples._POSNULA;
+    _CLAVENULA = LO_ListasSimples._CLAVENULA;
+
+  Type
+
+    TipoPos = LO_ListasSimples.TipoPos;
+    TipoClave = LO_ListasSimples.TipoClave;
+    TipoRegCola = TipoDatosSimple;
+    TipoCola = TipoListaSimple;
+
+    Procedure CrearCola(var ME:TipoCola; Nombre,Ruta:string);
+    Procedure DestruirCola(var ME:TipoCola);
+    Procedure AbrirCola(var ME:TipoCola);
+    Procedure CerrarCola(var ME:TipoCola);
+
+    Procedure Frente(var ME:TipoCola; var Reg:TipoRegCola);
+    Procedure Encolar(var ME:TipoCola; Reg:TipoRegCola);
+    Procedure Decolar(var ME:TipoCola);
+
+    Function ColaVacia(var ME:TipoCola):Boolean;
+
+implementation
+
+  Procedure CrearCola(var ME:TipoCola; Nombre,Ruta:string);
+  begin
+    CrearListaSimple(ME,Nombre,Ruta);
+  end;
+
+  Procedure DestruirCola(var ME:TipoCola);
+  begin
+    DestruirListaSimple(ME);
+  end;
+
+  Procedure AbrirCola(var ME:TipoCola);
+  begin
+    AbrirListaSimple(ME);
+  end;
+
+  Procedure CerrarCola(var ME:TipoCola);
+  begin
+    CerrarListaSimple(ME);
+  end;
+
+  Procedure Frente(var ME:TipoCola; var Reg:TipoRegCola);
+  begin
+    //Capturo el primer registro de la lista
+    CapturarListaSimple(ME,_POSNULA,Reg);;
+  end;
+
+  Procedure Encolar(var ME:TipoCola; Reg:TipoRegCola);
+  begin
+    //Inserto el registro al final de la lista
+    AgregarListaSimple(ME,Reg,UltimoListaSimple(ME));
+  end;
+
+  Procedure Decolar(var ME:TipoCola);
+  begin
+    //Elimino el primer registro de la lista
+    EliminarListaSimple(ME,_POSNULA);
+  end;
+
+  Function ColaVacia(var ME:TipoCola):Boolean;
+  begin
+    ColaVacia:=ListaSimpleVacia(ME);
+  end;
+
+end.

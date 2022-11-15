@@ -1,0 +1,77 @@
+object fAdmin: TfAdmin
+  Left = 192
+  Top = 125
+  Width = 550
+  Height = 430
+  Caption = 'Menu'
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -11
+  Font.Name = 'MS Sans Serif'
+  Font.Style = []
+  OldCreateOrder = False
+  PixelsPerInch = 96
+  TextHeight = 13
+  object bLogout: TButton
+    Left = 41
+    Top = 310
+    Width = 104
+    Height = 57
+    Caption = 'Salir'
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clWindowText
+    Font.Height = -16
+    Font.Name = 'MS Sans Serif'
+    Font.Style = []
+    ParentFont = False
+    TabOrder = 0
+    OnClick = bLogoutClick
+  end
+  object GroupBox1: TGroupBox
+    Left = 32
+    Top = 24
+    Width = 393
+    Height = 113
+    Caption = 'Ruleta'
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clWindowText
+    Font.Height = -16
+    Font.Name = 'MS Sans Serif'
+    Font.Style = []
+    ParentFont = False
+    TabOrder = 1
+    object bNew: TButton
+      Left = 24
+      Top = 40
+      Width = 105
+      Height = 49
+      Caption = 'Crear nueva partida'
+      Font.Charset = DEFAULT_CHARSET
+      Font.Color = clWindowText
+      Font.Height = -16
+      Font.Name = 'MS Sans Serif'
+      Font.Style = []
+      ParentFont = False
+      TabOrder = 0
+      WordWrap = True
+      OnClick = bNewClick
+    end
+    object bListaJ: TButton
+      Left = 152
+      Top = 40
+      Width = 105
+      Height = 49
+      Caption = 'Buscar Juego'
+      Font.Charset = DEFAULT_CHARSET
+      Font.Color = clWindowText
+      Font.Height = -16
+      Font.Name = 'MS Sans Serif'
+      Font.Style = []
+      ParentFont = False
+      TabOrder = 1
+      WordWrap = True
+      OnClick = bNewClick
+    end
+  end
+end

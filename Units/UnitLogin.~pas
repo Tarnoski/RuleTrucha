@@ -1,0 +1,73 @@
+unit UnitLogin;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, StdCtrls, ControladorLibrerias, ME_Jugadores;
+
+type
+  TfLogin = class(TForm)
+    Label1: TLabel;
+    Label2: TLabel;
+    eNick: TEdit;
+    ePass: TEdit;
+    bLogin: TButton;
+    Button2: TButton;
+    Button1: TButton;
+    procedure bLoginClick(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  fLogin: TfLogin;
+
+implementation
+
+uses
+  Formatos, UsuarioActual, ManejadorErrores, UnitMenu, UnitAdmin, UnitAlta;
+
+
+{$R *.dfm}
+
+procedure TfLogin.bLoginClick(Sender: TObject);
+begin
+  if not (StringVacio(eNick.Text) or StringVacio(ePass.Text))
+  then if EsAlfaNumerico(eNick.Text) and EsAlfaNumerico(ePass.Text)
+    then if not Logged(eNick.Text)
+      then if LogIn(eNick.Text,ePass.Text)
+        then begin
+          if Usuario.Nick = 'croupier
+          then fAdmin.Show
+          else fMenu.Show;
+          fLogin.Hide;
+        end
+        else ShowMessage(Error(102)) //Login
+      else ShowMessage(Error(103)) //Logged
+    else ShowMessage(Error(102))  //AlfaNumerico
+  else ShowMessage(Error(101)) //StringVacio
+end;
+
+procedure TfLogin.Button2Click(Sender: TObject);
+begin
+  Terminar;
+end;
+
+procedure TfLogin.FormCreate(Sender: TObject);
+begin
+  Iniciar;
+end;
+
+procedure TfLogin.Button1Click(Sender: TObject);
+begin
+  fAlta.Show;
+  fLogin.Hide;
+end;
+
+end.

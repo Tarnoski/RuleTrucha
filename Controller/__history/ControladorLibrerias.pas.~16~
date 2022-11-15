@@ -1,0 +1,44 @@
+unit ControladorLibrerias;
+
+interface
+
+uses
+  System.SysUtils, System.Classes, Vcl.Forms,
+  LO_ArbolAVL, LO_ArbolTrinario, LO_ListasDobles;
+
+const
+  Ruta='D:\Proyecto Final\09-03-21 Arbol AVL Completo\Data\';
+  RutaTri='Ganadores\';
+  RutaAVL='Jugadores\';
+  RutaLD='Apuestas\';
+
+type
+  TipoRuta = String;
+  procedure Iniciar;
+  procedure Cerrar;
+
+implementation
+
+uses
+  Unit1, Unit3, Unit4;
+
+  procedure Iniciar;
+  begin
+    CrearAVL(Unit1.ME,'Jugadores',Ruta + RutaAVL);
+    AbrirAVL(Unit1.ME);
+    CrearTrinario(Unit3.ME,'Ganadores',Ruta + RutaTri);
+    AbrirTrinario(Unit3.ME);
+    CrearListaDoble(Unit4.ME,'Apuestas',Ruta + RutaLD);
+    AbrirListaDoble(Unit4.ME);
+  end;
+
+  procedure Cerrar;
+  begin
+    CerrarAVL(Unit1.ME);
+    DestruirAVL(Unit1.ME);
+    CerrarTrinario(Unit3.ME);
+    DestruirTrinario(Unit3.ME);
+    Application.Terminate();
+  end;
+
+end.

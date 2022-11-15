@@ -1,0 +1,1178 @@
+unit LO_ArbolTrinario;
+
+interface
+uses
+  Rutas, LO_ListasDobles, SysUtils;
+
+const
+  _POSNULA = -1;
+  _CLAVENULA = '';
+  RutaArbol = Rutas.Ruta + Rutas.RutaTri;
+
+type
+  TipoPos = LO_ListasDobles.TipoPos;
+  TipoClave = string[8];
+
+  TipoTriDatos = TipoDatosDoble;
+
+  TipoTriNodo = record
+                    Clave:TipoClave;
+                    Padre,HijoIzq,HijoDer:TipoPos;
+                    HijoMedio:TipoControlDoble; {Los hijos del medio (ListaDoble)
+                    seran los que almacenaran la informacion: el nodo del arbol
+                    solo almacenara el registro de control de la lista doble
+                    generada al insertarse el nodo.}
+                  end;
+  TipoTriArchI = File of TipoTriNodo;
+
+  TipoTriControl =  record
+                      Raiz:TipoPos;
+                      Borrados:TipoPos;
+                      NodoLista:TipoPos; {Posicion del nodo que contiene el
+                      registro de control de la lista de datos iniciada}
+                    end;
+  TipoTriArchC = File of TipoTriControl;
+
+  TipoTrinario = record
+                I:TipoTriArchI;
+                C:TipoTriArchC;
+                D:TipoListaDoble;
+              end;
+              
+    Procedure CrearTrinario(var ME:TipoTrinario; Nombre:string);
+    Procedure DestruirTrinario(var ME:TipoTrinario);
+    Procedure AbrirTrinario(var ME:TipoTrinario);
+    Procedure CerrarTrinario(var ME:TipoTrinario);
+
+    Function BuscarNodoTrinario(var ME:TipoTrinario; Clave:TipoClave; var pos:TipoPos):boolean;
+    Procedure ObtenerNodoTrinario(var ME:TipoTrinario; Pos:TipoPos; var Reg:TipoTriNodo);
+    Procedure InsertarNodoTrinario(var ME:TipoTrinario; Clave:TipoClave; pos:TipoPos);
+    Procedure BorrarNodoTrinario(var ME:TipoTrinario; pos:TipoPos);
+
+    Function PrimerNodoTrinario(var ME:TipoTrinario):TipoPos;
+    Function UltimoNodoTrinario(var ME:TipoTrinario):TipoPos;
+    Function AnteriorNodoTrinario(var ME:TipoTrinario; Pos:TipoPos):TipoPos;
+    Function ProximoNodoTrinario(var ME:TipoTrinario; Pos:TipoPos):TipoPos;
+
+    Function BuscarDatosTrinario(var ME:TipoTrinario; Clave:TipoClave; var pos:TipoPos):boolean;
+    Procedure CapturarDatosTrinario(var ME:TipoTrinario; pos:TipoPos; var Reg:TipoTriDatos);
+    Procedure AgregarDatosTrinario(var ME:TipoTrinario; Reg:TipoTriDatos; pos:TipoPos);
+    Procedure ModificarDatosTrinario(var ME:TipoTrinario; pos:TipoPos; Reg:TipoTriDatos);
+    Procedure EliminarDatosTrinario(var ME:TipoTrinario; pos:TipoPos);
+
+    Function PrimerDatosTrinario(var ME:TipoTrinario):TipoPos;
+    Function UltimoDatosTrinario(var ME:TipoTrinario):TipoPos;
+    Function AnteriorDatosTrinario(var ME:TipoTrinario; Pos:TipoPos):TipoPos;
+    Function ProximoDatosTrinario(var ME:TipoTrinario; Pos:TipoPos):TipoPos;
+
+    Function RaizTrinario(var ME:TipoTrinario):TipoPos;
+    Function PadreTrinario(var ME:TipoTrinario; pos:TipoPos):TipoPos;
+    Function HijoIzquierdoTrinario(var ME:TipoTrinario; pos:TipoPos):TipoPos;
+    Function HijoDerechoTrinario(var ME:TipoTrinario; pos:TipoPos):TipoPos;
+
+    Function  PosNulaTrinario(var ME:TipoTrinario):TipoPos;
+    Function  ClaveNulaTrinario(var ME:TipoTrinario):TipoClave;
+    Function  TrinarioVacio(var ME:TipoTrinario):boolean;
+
+    Procedure BalancearTrinario(var ME:TipoTrinario);
+
+
+
+implementation
+
+  Procedure CrearTrinario(var ME:TipoTrinario; Nombre:string);
+  var
+    RC:TipoTriControl;
+    bControlControl,bControlIndice:boolean;
+
+  begin
+    CrearListaDoble(ME.D,Nombre,RutaArbol);
+    Assign(Me.C,RutaArbol + Nombre + '.ctx');
+    Assign(ME.I,RutaArbol + Nombre + '.ntx');
+    {$I-} {Directiva de Compilacion: debilita el control de errores de delphi
+    En caso de error, no cierra la aplicacion}
+    Reset(ME.C);
+    bControlControl := (IOResult = 0);
+    Reset(ME.I);
+    bControlIndice := (IOResult = 0);
+    if (not(bControlControl)) and (not(bControlIndice))
+    then begin
+      Rewrite(ME.C);
+      RC.Raiz:=_POSNULA;
+      RC.Borrados:=_POSNULA;
+      RC.NodoLista:=_POSNULA;
+      seek(ME.C,0);
+      Write(ME.C,RC);
+      Rewrite(ME.I);
+      Close(ME.C);
+      Close(ME.I);
+    end;
+    {$i+}
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure DestruirTrinario(var ME:TipoTrinario);
+  begin
+    DestruirListaDoble(ME.D);
+    Erase(ME.C);
+    Erase(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure AbrirTrinario(var ME:TipoTrinario);
+  begin
+    AbrirListaDoble(ME.D);
+    Reset(ME.C);
+    Reset(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure CerrarTrinario(var ME:TipoTrinario);
+  begin
+    CerrarListaDoble(ME.D);
+    Close(ME.C);
+    Close(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function BuscarNodoTrinario(var ME:TipoTrinario; Clave:TipoClave; var Pos:TipoPos):boolean;
+  {Cada nodo del arbol posee el registro de control de una lista de datos asociada a
+  si mismo. En cuyo caso, el objetivo de esta funcion es saber si la lista existe o no}
+
+  var
+    Encont:boolean;
+    RC:TipoTriControl;
+    Reg:TipoTriNodo;
+    posPadre:TipoPos;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    Encont:=False;
+    pos:=RC.Raiz;
+    posPadre:=_POSNULA;
+    While (Encont = False) and (Pos <> _POSNULA)
+    do begin
+      seek(ME.I,Pos);
+      read(ME.I,Reg);
+      posPadre:=pos;
+      if Reg.Clave = Clave
+      then Encont:=True
+      else if Clave < Reg.Clave
+        then pos:=Reg.HijoIzq
+        else pos:=Reg.HijoDer;
+    end;
+    if not(Encont)
+    then pos:=posPadre;
+    BuscarNodoTrinario:=Encont;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure ObtenerNodoTrinario(var ME:TipoTrinario; Pos:TipoPos; var Reg:TipoTriNodo);
+  //Esta funcion devuelve el nodo, a la vez que inicia su lista
+  var
+    RC:TipoTriControl;
+
+  begin
+
+    //Obtengo el nodo e inicio su lista de datos
+    seek(ME.I,Pos);
+    read(ME.I,Reg);
+    IniciarListaDobleExistente(ME.D,Reg.HijoMedio);
+
+    //Actualizo la nueva lista abierta
+    seek(ME.C,0);
+    read(ME.C,RC);
+    RC.NodoLista:=Pos;
+    seek(ME.C,0);
+    write(ME.C,RC);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure InsertarNodoTrinario(var ME:TipoTrinario; Clave:TipoClave; Pos:TipoPos);
+  {En caso de que la clave del nodo en la posicion Pos sea igual al parametro Clave,
+  su lista sera iniciada en la libreria ListaDoble a traves de su campo HijoMedio.
+
+   Caso contrario, se creara el nodo y su lista asociada, la cual sera iniciada.}
+
+  var
+    RC:TipoTriControl;
+    Reg,RegAux:TipoTriNodo;
+    posNueva:TipoPos;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    posNueva:=FileSize(ME.I);
+    RC.NodoLista:=pos;
+
+    //Inicializo los datos del registro indice, en caso de que deba ser creado
+    Reg.Clave:= Clave;
+    Reg.HijoIzq:= _POSNULA;
+    Reg.HijoDer:= _POSNULA;
+
+    if RC.Raiz = _POSNULA //Si el arbol esta vacio
+    then begin
+      //Creo el primer nodo y su lista de datos, la inicio y guardo 
+      GenerarNuevaListaDoble(ME.D,Reg.HijoMedio);
+      Reg.Padre:= _POSNULA;
+      seek(ME.I,posNueva);
+      write(ME.I,Reg);
+      RC.Raiz:= posNueva;
+      RC.NodoLista:= posNueva;
+    end
+
+    else begin //Si el arbol no esta vacio
+      seek(ME.I,pos);
+      read(ME.I,RegAux); //Obtengo el nodo de la posicion Pos, el padre del nuevo
+
+      //Guardo la posicion del nuevo nodo en su padre
+      if RegAux.Clave < Clave
+      then RegAux.HijoDer:=posNueva
+      else RegAux.HijoIzq:=posNueva;
+      seek(ME.I,pos);
+      write(ME.I,RegAux);
+
+      //Creo la lista de datos y guardo el nuevo nodo y su registro de control
+      Reg.Padre:= pos;
+      GenerarNuevaListaDoble(ME.D,Reg.HijoMedio);
+      seek(ME.I,posNueva);
+      write(ME.I,Reg);
+
+      //Incremento en uno la cantidad de nodos registradas y dejo iniciada su lista
+      RC.NodoLista:= posNueva;
+    end;
+    seek(ME.C,0);
+    write(ME.C,RC);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure Eliminar_1(var ME:TipoTrinario; var pos:TipoPos);
+  //Eliminacion sin hijos
+  var
+    Reg,RegPadre:TipoTriNodo;
+    RC:TipoTriControl;
+
+  begin
+    seek(ME.I,pos);
+    read(ME.I,Reg);
+    if pos=RC.Raiz //Si Reg es la raiz del arbol, entonces este quedara vacio
+    then begin
+      seek(ME.C,0);
+      read(ME.C,RC);
+      RC.Raiz:=_POSNULA;
+      seek(ME.C,0);
+      write(ME.C,RC);
+    end
+    else begin //Si Reg es hijo de otro nodo.
+      seek(ME.I,Reg.Padre);
+      read(ME.I,RegPadre);
+      //Se reemplaza la posicion de Reg guardada en su padre por _POSNULA.
+      if RegPadre.HijoDer = pos
+      then RegPadre.HijoDer:=_POSNULA
+      else RegPadre.HijoIzq:=_POSNULA;
+      seek(ME.I,Reg.Padre);
+      write(ME.I,RegPadre);
+    end;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure Eliminar_2(var ME:TipoTrinario; var pos:TipoPos);
+  //Eliminacion con un hijo
+  var
+    RegHijo,Reg,RegPadre:TipoTriNodo;
+    RC:TipoTriControl;
+    posHijo:TipoPos;
+
+  begin
+    seek(ME.I,pos);
+    read(ME.I,Reg);
+
+    if Reg.HijoIzq = _POSNULA
+    then posHijo:=Reg.HijoDer //Reg tiene un hijo derecho.
+    else posHijo:=Reg.HijoIzq; //Reg tiene un hijo izquierdo.
+
+    //Capturo al hijo
+    seek(ME.I,posHijo);
+    read(ME.I,RegHijo);
+
+    if pos = RC.Raiz
+    //Si Reg es la raiz del arbol, entonces su hijo pasara a serlo.
+    then begin
+      seek(ME.C,0);
+      read(ME.C,RC);
+      RC.Raiz:=posHijo;
+      seek(ME.C,0);
+      write(ME.C,RC);
+    end
+    else begin //Reg no es la raiz del arbol, entonces tiene un nodo padre
+
+      //El hijo de Reg pasara a ser el nuevo hijo de RegPadre
+      seek(ME.I,Reg.Padre);
+      read(ME.I,RegPadre);
+      if RegPadre.HijoIzq = pos
+      then RegPadre.HijoIzq:=posHijo //RegHijo sera el hijo izquierdo de RegPadre.
+      else RegPadre.HijoDer:=posHijo; //RegHijo sera el hijo derecho de RegPadre.
+      seek(ME.I,Reg.Padre);
+      write(ME.I,RegPadre);
+
+    end;
+    RegHijo.Padre:=Reg.Padre;
+    seek(ME.I,posHijo);
+    write(ME.I,RegHijo);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure Eliminar_3(var ME:TipoTrinario; pos:TipoPos);
+  {Eliminacion con dos hijos: se buscara a los dos descendientes (derecho e izquierdo)
+  cuya clave sea la mas cercana en valor a la del nodo Reg.
+
+  Una vez encontrados los dos nodos candidatos, se usaran los siguientes criterios
+  (en el orden dado) para decidir cual intercambiara su lugar con Reg:
+
+    1:Altura en el subarbol (con Reg como raiz). El de mayor altura es el elegido.
+
+    2:Si ambos poseen la misma altura pero uno tiene hijo y el otro no, el
+    primero sera eliminado.
+
+    3:En caso de que ambos tengan la misma altura y la misma cantidad de hijos,
+    se elegira al descendiente derecho, tomando en cuenta la dispocision de los
+    numeros naturales (de 0 a infinito).}
+
+  var
+    RC:TipoTriControl;
+    Reg,RegSusIzq,RegSusDer,RegAux:TipoTriNodo;
+    posSusIzq,posSusDer,posAux:TipoPos;
+    AlturaIzq,AlturaDer:integer;
+    EsIzquierdo,TieneHijo:boolean;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    seek(ME.I,pos);
+    read(ME.I,Reg);
+
+
+
+    //Fase 1: ubicar a los descendientes candidatos por la izquierda y la derecha.
+
+    {El primer candidato a sustituir a Reg por la Derecha sera su hijo derecho, luego se
+    verificara si este tiene o no un hijo izquierdo: si no lo tiene la variable contadora
+    AlturaDer tendra valor 1, y el hijo derecho sera el candidato derecho final.
+
+    Caso contrario, se pasara a este hijo izquierdo, se incrementara AlturaDer en 1
+    y se observara si este nodo tiene un hijo izquierdo,  repitiendo este proceso
+    hasta encontrar a aquel nodo que no tenga hijo izquierdo.
+
+    Este ultimo nodo seria el candidato derecho final.}
+    posSusDer:=Reg.HijoDer;
+    seek(ME.I,posSusDer);
+    read(ME.I,RegSusDer);
+    AlturaDer:=1;
+    While RegSusDer.HijoIzq <> _POSNULA
+    do begin
+      posSusDer:=RegSusDer.HijoIzq;
+      AlturaDer:=AlturaDer + 1;
+      seek(ME.I,posSusDer);
+      read(ME.I,RegSusDer);
+    end;
+
+    {El candidato izquierdo seguira reglas similares al derecho, solo que al reves:
+     comienza por el hijo izquierdo de Reg, y luego se verifica si este y todos
+     los siguientes tienen nodos tienen hijos derechos. Asi hasta encontrar al
+     candidato izquierdo final.}
+    posSusIzq:=Reg.HijoIzq;
+    seek(ME.I,posSusIzq);
+    read(ME.I,RegSusIzq);
+    AlturaIzq:=1;
+    While RegSusIzq.HijoDer <> _POSNULA
+    do begin
+      posSusIzq:=RegSusIzq.HijoDer;
+      AlturaIzq:= AlturaIzq + 1;
+      seek(ME.I,posSusIzq);
+      read(ME.I,RegSusIzq);
+    end;
+
+    //Fase 2: seleccionar al elegido para reemplazar a la Reg.
+
+    if AlturaIzq <> AlturaDer then
+      //Caso 1: uno de los candidatos tiene mas altura que el otro.
+      if AlturaDer > AlturaIzq
+      then EsIzquierdo:=False //El candidato derecho tiene mas altura, sera el elegido.
+      else EsIzquierdo:=True //El candidato izquierdo tiene mas altura, sera el elegido.
+    else
+      {Caso 2: ambos candidatos tienen la misma altura, revisar si los candidatos
+       tienen igual cantidad de hijos.}
+      if (RegSusIzq.HijoIzq <> _POSNULA) and (RegSusDer.HijoDer = _POSNULA)
+      then EsIzquierdo:=True //El candidato izquierdo tiene un hijo y el derecho no.
+      else EsIzquierdo:=False; //En cualquier otro caso el derecho sera el elegido.
+
+      {Caso 3: si ambos tienen la misma cantidad de hijos y estan a la misma altura
+      se dara preferencia, tomando en cuenta la disposicion de
+      los numeros naturales, al candidato derecho}
+      
+    //Fase 3: invertir las posiciones de Reg y el elegido.
+
+    TieneHijo:=False; //Inicializo variable
+
+    if EsIzquierdo
+
+    then begin //El elegido es el descendiente por la izquierda.
+
+      //Paso 1: Se actualizan los datos del padre de Reg, si es que tiene
+      if pos = RC.Raiz //Paso 1.1: Reg es la raiz, el elegido pasa a serlo.
+      then begin
+        RC.Raiz:=posSusIzq;
+        seek(ME.C,0);
+        write(ME.C,RC);
+      end
+      else begin  //Paso 1.2: Reg no es la raiz, tiene un nodo padre.
+        seek(ME.I,Reg.Padre);
+        read(ME.I,RegAux);
+        if RegAux.HijoIzq = pos
+        then RegAux.HijoIzq:=posSusIzq  //El elegido sera el hijo izquierdo de RegPadre.
+        else RegAux.HijoDer:=posSusIzq; //El elegido sera el hijo derecho de RegPadre.
+        seek(ME.I,Reg.Padre);
+        write(ME.I,RegAux);
+      end;
+
+      //Paso 2: se actualiza el hijo derecho de Reg.
+      seek(ME.I,Reg.HijoDer);
+      read(ME.I,RegAux);
+      RegAux.Padre:=posSusIzq;
+      seek(ME.I,Reg.HijoDer);
+      write(ME.I,RegAux);
+
+      //Paso 3: se actualiza el hijo izquierdo del elegido, si tiene
+      if RegSusIzq.HijoIzq <> _POSNULA
+      then begin
+        seek(ME.I,RegSusIzq.HijoIzq);
+        read(ME.I,RegAux);
+        RegAux.Padre:=pos;
+        seek(ME.I,RegSusIzq.HijoIzq);
+        write(ME.I,RegAux);
+        TieneHijo:=True;
+      end;
+
+      //Paso 4: se da el intercambio entre el elegido y Reg.
+
+      if Reg.HijoIzq = posSusIzq
+      then begin //Paso 4.1: el elegido es el propio hijo izquierdo de Reg
+
+        seek(ME.I,posSusIzq);
+        read(ME.I,RegAux);
+
+        //Paso 4.1.1: el elegido toma los datos de Reg
+        RegAux.Padre:=Reg.Padre; //El padre de Reg pasa a ser el padre de elegido.
+        RegAux.HijoIzq:=pos;  //El elegido toma como su hijo izquierdo a Reg.
+        RegAux.HijoDer:=Reg.HijoDer; //El hijo derecho de Reg sera el del elegido.
+
+        //Paso 4.1.2: Reg toma los datos del elegido
+        Reg.Padre:=Reg.HijoIzq; //El padre de Reg sera su propio hijo izquierdo, el elegido.
+        Reg.HijoIzq:=RegSusIzq.HijoIzq;  //Reg toma como su hijo izquierdo al del elegido.
+        Reg.HijoDer:=_POSNULA; //Reg no tendra un hijo derecho
+
+      end
+      else begin //Paso 4.2: el elegido no es el hijo izquierdo de Reg.
+
+        //Paso 4.2.1: se actualizan los datos del padre del elegido.
+        seek(ME.I,RegSusIzq.Padre);
+        read(ME.I,RegAux);
+        RegAux.HijoDer:=pos;
+        seek(ME.I,RegSusIzq.Padre);
+        write(ME.I,RegAux);
+
+        //Paso 4.2.2: Se actualizan los datos del hijo izquierdo de Reg.
+        seek(ME.I,Reg.HijoIzq);
+        read(ME.I,RegAux);
+        RegAux.Padre:=posSusIzq;
+        seek(ME.I,Reg.HijoIzq);
+        write(ME.I,RegAux);
+
+        //Paso 4.2.3: se intercambian sus datos Reg y RegSusIzq.
+        seek(ME.I,posSusIzq);
+        read(ME.I,RegAux);
+
+        RegAux.Padre:=Reg.Padre; //El padre del Reg pasa a ser el padre del elegido.
+        RegAux.HijoIzq:=Reg.HijoIzq;  //El elegido toma como su hijo izquierdo al de Reg.
+        RegAux.HijoDer:=Reg.HijoDer; //El hijo derecho de Reg lo sera ahora para el elegido.
+
+        Reg.Padre:=RegSusIzq.Padre; //El padre de Reg sera el padre elegido.
+        Reg.HijoIzq:=RegSusIzq.HijoIzq;  //El elegido toma como su hijo izquierdo a Reg.
+        Reg.HijoDer:=_POSNULA; //Reg no tendra el hijo derecho.
+
+      end;
+
+      seek(ME.I,posSusIzq);
+      write(ME.I,RegAux);
+      seek(ME.I,pos);
+      write(ME.I,Reg);
+    end
+
+    else begin //El elegido es el descendiente por la derecha.
+
+      //Paso 1: Se actualizan los datos del padre de Reg, si es que tiene
+      if pos = RC.Raiz //Paso 1.1: Reg es la raiz, el elegido pasa a serlo.
+      then begin
+        RC.Raiz:=posSusDer;
+        seek(ME.C,0);
+        write(ME.C,RC);
+      end
+      else begin  //Paso 1.2: Reg no es la raiz, entonces tiene un nodo padre.
+        seek(ME.I,Reg.Padre);
+        read(ME.I,RegAux);
+        if RegAux.HijoIzq = pos
+        then RegAux.HijoIzq:=posSusDer  //El elegido sera el nuevo hijo izquierdo de RegPadre.
+        else RegAux.HijoDer:=posSusDer; //El elegido sera el nuevo hijo derecho de RegPadre.
+        seek(ME.I,Reg.Padre);
+        write(ME.I,RegAux);
+      end;
+
+      //Paso 2: se actualiza el hijo izquierdo de Reg.
+      seek(ME.I,Reg.HijoIzq);
+      read(ME.I,RegAux);
+      RegAux.Padre:=posSusDer;
+      seek(ME.I,Reg.HijoIzq);
+      write(ME.I,RegAux);
+
+      //Paso 3: se actualiza el hijo derecho del elegido, si tiene
+      if RegSusDer.HijoDer <> _POSNULA
+      then begin
+        seek(ME.I,RegSusDer.HijoDer);
+        read(ME.I,RegAux);
+        RegAux.Padre:=pos;
+        seek(ME.I,RegSusDer.HijoDer);
+        write(ME.I,RegAux);
+        TieneHijo:=True;
+      end;
+
+      //Paso 4: se da el intercambio entre el elegido y Reg.
+
+      if Reg.HijoDer = posSusDer
+      then begin //Paso 4.1: el elegido es el propio hijo derecho de Reg.
+
+        seek(ME.I,Reg.HijoDer);
+        read(ME.I,RegAux);
+
+        //Paso 4.1.1: el elegido toma los datos de Reg
+        RegAux.Padre:=Reg.Padre; //El padre del Reg pasa a ser el padre de elegido.
+        RegAux.HijoDer:=pos;  //El elegido toma como su hijo derecho a Reg.
+        RegAux.HijoIzq:=Reg.HijoIzq; //El hijo izquierdo de Reg lo sera ahora para el elegido.
+
+        //Paso 4.1.2: Reg toma los datos del elegido
+        Reg.Padre:=Reg.HijoDer; //El padre de Reg sera su propio hijo derecho, el elegido.
+        Reg.HijoDer:=RegSusDer.HijoDer;  //Reg toma como su hijo derecho al del elegido.
+        Reg.HijoIzq:=_POSNULA; //Reg no tendra un hijo izquierdo.
+
+      end
+      else begin //Paso 4.2: el elegido no es el hijo derecho de Reg
+
+        //Paso 4.2.1: se actualizan los datos del padre del elegido
+        seek(ME.I,RegSusDer.Padre);
+        read(ME.I,RegAux);
+        RegAux.HijoIzq:=pos;
+        seek(ME.I,RegSusDer.Padre);
+        write(ME.I,RegAux);
+
+        //Paso 4.2.2: se actualizan los datos del hijo derecho de Reg.
+        seek(ME.I,Reg.HijoDer);
+        read(ME.I,RegAux);
+        RegAux.Padre:=posSusDer;
+        seek(ME.I,Reg.HijoDer);
+        write(ME.I,RegAux);
+
+        //Paso 4.2.3: se intercambian sus datos Reg y RegSusIzq.
+        seek(ME.I,posSusDer);
+        read(ME.I,RegAux);
+
+        RegAux.Padre:=Reg.Padre; //El padre del Reg pasa a ser el padre de elegido.
+        RegAux.HijoIzq:=Reg.HijoIzq;  //El elegido toma como su hijo izquierdo al de Reg.
+        RegAux.HijoDer:=Reg.HijoDer; //El hijo derecho de Reg lo sera ahora para el elegido.
+
+        Reg.Padre:=RegSusDer.Padre; //El padre de Reg sera el padre elegido.
+        Reg.HijoDer:=RegSusDer.HijoDer;  //El elegido toma como su hijo derecho a Reg.
+        Reg.HijoIzq:=_POSNULA; //Reg no tendra un hijo izquierdo.
+
+      end;
+
+      seek(ME.I,posSusDer);
+      write(ME.I,RegAux);
+      seek(ME.I,pos);
+      write(ME.I,Reg);
+    end;
+
+    {Dependiendo de la existencia o no de hijos, se invocara al
+     procedimiento correspondiente}
+    if TieneHijo
+    then Eliminar_2(ME,pos) //Reg no tiene hijos.
+    else Eliminar_1(ME,pos) //Reg tiene un hijo.
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure BorrarNodoTrinario(var ME:TipoTrinario; pos:TipoPos);
+  var
+    RC:TipoTriControl;
+    Reg,RegAux:TipoTriNodo;
+    posAux:TipoPos;
+
+  begin
+    {EliminarTrinario  elegira un tipo de eliminacion dependiendo de los hijos
+    del nodo, siendo los casos:
+      *Si no tiene hijos, se invocara a Eliminar_1.
+      *Si tiene 1 hijo, se invocara a Eliminar_2.
+      *Si tiene 2 hijos, se invocara a Eliminar_3.
+
+     Nota: Eliminar_3 no lleva a cabo una eliminacion en si: elige un descendiente
+    del nodo a eliminar, para luego invertir posiciones con este (intercambiando
+    descendencias en el proceso). Luego, el registro sera eliminado invocando a:
+      *Eliminar_1 si no tiene hijos.
+      *Eliminar_2 si tiene 1 hijo.}
+
+    seek(ME.I,pos);
+    read(ME.I,Reg);
+    if (Reg.HijoIzq = _POSNULA) and (Reg.HijoDer = _POSNULA)
+    then Eliminar_1(ME,pos) //Si no tiene hijos, se invocara a Eliminar_1.
+    else if (Reg.HijoIzq <> _POSNULA) and (Reg.HijoDer <> _POSNULA)
+      then Eliminar_3(ME,pos) //Si tiene dos hijos, se invocara a Eliminar_3.
+      else Eliminar_2(ME,pos); //Si tiene un hijo, se invocara a Eliminar_2.
+
+    //Es necesario volver a capturar el nodo porque sus datos fueron cambiados
+    seek(ME.C,0);
+    read(ME.C,RC);
+    seek(ME.I,pos);
+    read(ME.I,Reg);
+    if RC.Borrados = _POSNULA //Si no hay registros borrados.
+    then begin
+      RC.Borrados:=pos;
+      Reg.Padre:=_POSNULA;
+    end
+    else begin  //Si ya hay registros borrados.
+
+      //Busco el ultimo registro borrado
+      posAux:=RC.Borrados;
+      repeat
+        seek(ME.I,posAux);
+        read(ME.I,RegAux);
+        if RegAux.HijoDer <> _POSNULA
+        then posAux:=RegAux.HijoDer;
+      until RegAux.HijoDer = _POSNULA;
+      //El nuevo nodo borrado sera el hijo derecho del ultimo borrado
+      RegAux.HijoDer:=pos;
+      Reg.Padre:=posAux;
+      Reg.HijoDer:=_POSNULA;
+      Reg.HijoIzq:=_POSNULA;
+      seek(ME.I,pos);
+      write(ME.I,Reg);
+      seek(ME.I,posAux);
+      write(ME.I,RegAux);
+    end;
+    seek(ME.C,0);
+    write(ME.C,RC);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function PrimerNodoTrinario(var ME:TipoTrinario):TipoPos;
+  var
+    Reg:TipoTriNodo;
+    RC:TipoTriControl;
+    Pos:TipoPos;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    Pos:=RC.Raiz;
+    repeat
+      seek(ME.I,Pos);
+      read(ME.I,Reg);
+      if Reg.HijoIzq <> _POSNULA
+      then Pos:=Reg.HijoIzq;
+    until Reg.HijoIzq = _POSNULA;
+    PrimerNodoTrinario:=Pos;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function UltimoNodoTrinario(var ME:TipoTrinario):TipoPos;
+  var
+    Reg:TipoTriNodo;
+    RC:TipoTriControl;
+    Pos:TipoPos;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    Pos:=RC.Raiz;
+    repeat
+      seek(ME.I,Pos);
+      read(ME.I,Reg);
+      if Reg.HijoDer <> _POSNULA
+      then Pos:=Reg.HijoDer;
+    until Reg.HijoDer = _POSNULA;
+    UltimoNodoTrinario:=Pos;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function AnteriorNodoTrinario(var ME:TipoTrinario; Pos:TipoPos):TipoPos;
+  var
+    Reg,Raux:TipoTriNodo;
+
+  begin
+    seek(ME.I,Pos);
+    read(ME.I,Reg);
+    Pos:=_POSNULA; //Valor por defecto
+
+    if Reg.HijoIzq <> _POSNULA //Caso 1: Reg tiene un hijo izquierdo
+    then begin
+
+      //Obtengo al hijo izquierdo de Reg, Raux
+      Pos:=Reg.HijoIzq;
+      seek(ME.I,Pos);
+      read(ME.I,Raux);
+
+      if Raux.HijoDer <> _POSNULA {Si Raux tiene un hijo derecho, entonces se
+      buscara (siempre por la derecha) al registro que no tenga un hijo derecho.
+      Este sera el anterior inmediato de Reg}
+      then repeat
+        seek(ME.I,Pos);
+        read(ME.I,Raux);
+        if Raux.HijoDer <> _POSNULA
+        then Pos:=Raux.HijoDer;
+      until Raux.HijoDer = _POSNULA;
+
+    end
+    else if Reg.Padre <> _POSNULA //Caso 2: Reg no tiene hijo izquierdo, pero si padre
+    then begin
+
+      Pos:=Reg.Padre;
+      repeat
+        seek(ME.I,Pos);
+        read(ME.I,Raux);
+        if Reg.Clave < Raux.Clave //Si la clave del padre es mayor que la de Reg
+        then Pos:=Raux.Padre;
+      until (Reg.Clave > Raux.Clave) or (Pos = _POSNULA);
+      //Si Pos = Posnula, entonces alcanze la Raiz del arbol: Reg es el primer registro
+
+    end; {Caso 3: si Reg no tiene descendencia izquierda o un padre menor que el,
+    entonces es el primer registro del arbol}
+    AnteriorNodoTrinario:=Pos;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function ProximoNodoTrinario(var ME:TipoTrinario; Pos:TipoPos):TipoPos;
+  var
+    Reg,Raux:TipoTriNodo;
+
+  begin
+    seek(ME.I,Pos);
+    read(ME.I,Reg);
+    Pos:=_POSNULA; //Valor por defecto
+
+    if Reg.HijoDer <> _POSNULA //Caso 1: Reg tiene un hijo derecho
+    then begin
+
+      //Obtengo al hijo derecho de Reg, Raux
+      Pos:=Reg.HijoDer;
+      seek(ME.I,Pos);
+      read(ME.I,Raux);
+
+      if Raux.HijoIzq <> _POSNULA {Si Raux tiene un hijo izquierdo, entonces se
+      buscara (siempre por la izquierda) al registro que no tenga un hijo izquierdo.
+      Este sera el proximo inmediato de Reg}
+      then repeat
+        seek(ME.I,Pos);
+        read(ME.I,Raux);
+        if Raux.HijoIzq <> _POSNULA
+        then Pos:=Raux.HijoIzq;
+      until Raux.HijoIzq = _POSNULA;
+
+    end
+    else if Reg.Padre <> _POSNULA //Caso 2: Reg no tiene hijo izquierdo, pero si padre
+    then begin
+
+      Pos:=Reg.Padre;
+      repeat
+        seek(ME.I,Pos);
+        read(ME.I,Raux);
+        if Reg.Clave > Raux.Clave //Si la clave del padre es menor que la de Reg
+        then Pos:=Raux.Padre;
+      until (Reg.Clave < Raux.Clave) or (Pos = _POSNULA);
+      //Si Pos = Posnula, entonces alcanze la Raiz del arbol: Reg es el ultimo registro
+
+    end; {Caso 3: si Reg no tiene descendencia derecha o un padre mayor que el,
+    entonces es el ultimo registro del arbol}
+    ProximoNodoTrinario:=Pos;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function PrimerDatosTrinario(var ME:TipoTrinario):TipoPos;
+
+  begin
+    PrimerDatosTrinario:=PrimeroListaDoble(ME.D);
+  end;
+{------------------------------------------------------------------------------}
+
+  Function UltimoDatosTrinario(var ME:TipoTrinario):TipoPos;
+
+  begin
+    UltimoDatosTrinario:=UltimoListaDoble(ME.D);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function AnteriorDatosTrinario(var ME:TipoTrinario; Pos:TipoPos):TipoPos;
+
+  begin
+    AnteriorDatosTrinario:=AnteriorListaDoble(ME.D,Pos);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function ProximoDatosTrinario(var ME:TipoTrinario; Pos:TipoPos):TipoPos;
+
+  begin
+    ProximoDatosTrinario:=ProximoListaDoble(ME.D,Pos);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function BuscarDatosTrinario(var ME:TipoTrinario; Clave:TipoClave; var pos:TipoPos):boolean;
+
+  begin
+    BuscarDatosTrinario:=BuscarListaDoble(ME.D,Clave,Pos);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure CapturarDatosTrinario(var ME:TipoTrinario; pos:TipoPos; var Reg:TipoTriDatos);
+  begin
+    CapturarListaDoble(ME.D,pos,Reg);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure AgregarDatosTrinario(var ME:TipoTrinario; Reg:TipoTriDatos; pos:TipoPos);
+  var
+    RC:TipoTriControl;
+    RI:TipoTriNodo;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    AgregarListaDoble(ME.D,Reg,pos);
+
+    //Obtengo el nodo con el registro de control de la lista actual
+    seek(ME.I,RC.NodoLista);
+    read(ME.I,RI);
+
+    //Obtengo el registro de control actualizado y lo guardo en el nodo
+    RI.HijoMedio:=ObtenerControlListaDoble(ME.D);
+    seek(ME.I,RC.NodoLista);
+    write(ME.I,RI);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure ModificarDatosTrinario(var ME:TipoTrinario; pos:TipoPos; Reg:TipoTriDatos);
+
+  begin
+    ModificarListaDoble(ME.D,Pos,Reg);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure EliminarDatosTrinario(var ME:TipoTrinario; pos:TipoPos);
+  var
+    RC:TipoTriControl;
+    RI:TipoTriNodo;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    EliminarListaDoble(ME.D,Pos);
+
+    //Obtengo el nodo con el registro de control de la lista actual
+    seek(ME.I,RC.NodoLista);
+    read(ME.I,RI);
+
+    //Obtengo el registro de control actualizado y lo guardo en el nodo
+    RI.HijoMedio:=ObtenerControlListaDoble(ME.D);
+    seek(ME.I,RC.NodoLista);
+    write(ME.I,RI);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function RaizTrinario(var ME:TipoTrinario):TipoPos;
+  var
+    RC:TipoTriControl;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    RaizTrinario:=RC.Raiz;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function PadreTrinario(var ME:TipoTrinario; pos:TipoPos):TipoPos;
+  var
+    Reg:TipoTriNodo;
+
+  begin
+    seek(ME.I,pos);
+    read(ME.I,Reg);
+    PadreTrinario:=Reg.Padre;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function HijoIzquierdoTrinario(var ME:TipoTrinario; pos:TipoPos):TipoPos;
+  var
+    Reg:TipoTriNodo;
+
+  begin
+    seek(ME.I,pos);
+    read(ME.I,Reg);
+    HijoIzquierdoTrinario:=Reg.HijoIzq;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function HijoDerechoTrinario(var ME:TipoTrinario; pos:TipoPos):TipoPos;
+  var
+    Reg:TipoTriNodo;
+
+  begin
+    seek(ME.I,pos);
+    read(ME.I,Reg);
+    HijoDerechoTrinario:=Reg.HijoDer
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function PosNulaTrinario(var ME:TipoTrinario):TipoPos;
+  begin
+    PosNulaTrinario:=_POSNULA;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function ClaveNulaTrinario(var ME:TipoTrinario):TipoClave;
+  begin
+    ClaveNulaTrinario:=_CLAVENULA;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function TrinarioVacio(var ME:TipoTrinario):boolean;
+  var
+    RC:TipoTriControl;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    TrinarioVacio:= RC.Raiz = _POSNULA;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure SetearPosicionesNulas(var ME:TipoTrinario; Pos:TipoPos);
+  //Todas las posiciones almacendas seran modificadas
+  var
+    Reg:TipoTriNodo;
+
+  begin
+    seek(ME.I,Pos);
+    read(ME.I,Reg);
+    if Reg.HijoIzq <> _POSNULA
+    then SetearPosicionesNulas(ME,Reg.HijoIzq);
+    if Reg.HijoDer <> _POSNULA
+    then SetearPosicionesNulas(ME,Reg.HijoDer);
+    Reg.Padre:=_POSNULA;
+    Reg.HijoIzq:=_POSNULA;
+    Reg.HijoDer:=_POSNULA;
+    seek(ME.I,Pos);
+    write(ME.I,Reg);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure NuevasPosiciones(var ME:TipoTrinario; LB:TipoListaDoble;
+  PosLD,PosP:TipoPos; NumNodo:integer);
+  //PosLD: posicion del homonimo del nodo en la ListaDoble
+  //PosP: posicion del padre del nodo en el arbol
+  //NumNodo: sirve para saber cuando cuantas posiciones moverse en la lista
+  var
+    Reg,Raux:TipoTriNodo;
+    PosIzq,PosDer:TipoPos;
+    i,NumAux:integer;
+    RLD:TipoDatosDoble;
+
+  begin
+    {PosLD puede ser _POSNULA por:
+      *Ser el principio o final del archivo
+      *La clave del nodo es nula: sus relaciones ya fueran establecidas}
+    if PosLD <> _POSNULA
+    then begin
+      NumAux:= NumNodo div 2 ; //La cantidad de registros que me tendre que mover
+      //Obtengo el nodo
+      CapturarListaDoble(LB,PosLD,RLD);
+      seek(ME.I,RLD.InfoPos);
+      read(ME.I,Reg);
+
+      Reg.Padre:=PosP; //Establezco la posicion del nuevo padre
+
+      //Obtengo la posicion del nuevo hijo izquierdo y la establezco
+      PosIzq:=PosLD;
+      if NumAux <= 1
+      then PosIzq:=AnteriorListaDoble(LB,PosIzq)
+      else for i:=1 to NumAux
+        do PosIzq:=AnteriorListaDoble(LB,PosIzq);
+
+      if PosIzq <> _POSNULA //Si no llegue al principio del archivo
+      then begin
+        CapturarListaDoble(LB,PosIzq,RLD);
+        if RLD.Clave = _CLAVENULA //Si el nodo hijo ya tiene sus nuevas relaciones
+        then PosIzq:=_POSNULA //No habra hijo izquierdo
+        else begin
+          seek(ME.I,RLD.InfoPos);
+          read(ME.I,Raux);
+          Reg.HijoIzq:=RLD.InfoPos;
+        end;
+      end;
+
+      //Obtengo la posicion del nuevo hijo derecho y la establezco
+      PosDer:=PosLD;
+      if NumAux <= 1
+      then PosDer:=ProximoListaDoble(LB,PosDer)
+      else for i:=1 to NumAux
+        do PosDer:=ProximoListaDoble(LB,PosDer);
+
+      if PosDer <> _POSNULA //Si no llegue al final del archivo
+      then begin
+        CapturarListaDoble(LB,PosDer,RLD);
+        if RLD.Clave = _CLAVENULA //Si el nodo hijo ya tiene sus nuevas relaciones
+        then PosDer:=_POSNULA //No habra hijo derecho
+        else begin
+          seek(ME.I,RLD.InfoPos);
+          read(ME.I,Raux);
+          Reg.HijoDer:=RLD.InfoPos;
+        end;
+      end;
+
+      //Su homonimo en la lista tendra como clave la _CLAVENULA
+      CapturarListaDoble(LB,PosLD,RLD);
+      RLD.Clave:=_CLAVENULA; //Significa que el nodo ya tiene sus nuevas relaciones
+      ModificarListaDoble(LB,PosLD,RLD);
+
+      //Guardo el nodo con sus nuevos enlaces
+      seek(ME.I,RLD.InfoPos);
+      write(ME.I,Reg);
+
+      //Invoco los metodos para con el hijo izquierdo y derecho
+      NuevasPosiciones(ME,LB,PosDer,RLD.InfoPos,NumNodo - NumAux);
+      NuevasPosiciones(ME,LB,PosIzq,RLD.InfoPos,NumNodo - NumAux);
+    end;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure BalancearTrinario(var ME:TipoTrinario);
+  { El objetivo de BalancearTrinario es ordenar la distribucion de los nodos
+  de tal forma que facilite las operaciones de busqueda.
+
+    Para llevar a cabo esta tarea es necesario hacer uso de una ListaDoble la
+  cual sera creada solo para llevar a cabo esta tarea y sera consecuentemente
+  destruida al terminar la operacion.
+    Los registros de la lista tomaran sus claves de los nodos del arbol a la vez
+  que almacenaran las posiciones de cada nodo homonimo.
+
+  Luego, se procedera a llamar a funcion SetearPosicionesNulas, que eliminara
+  las relaciones (posiciones de nodos Padre, hijos izquierdo y derecho)
+  de cada nodo al setear todas las posiciones almacenadas a _POSNULA.
+
+    Luego se contara la cantidad de nodos, y se estimara el nuevo nodo raiz
+  dividiendo a la variable canNodos por dos y sumandole uno (al sumarle uno,
+  si llega a haber unaa diferencia de un nodo entre las descendencias del
+  nodo raiz, el nodo de mas siempre ira a parar a la descendencia izquierda).
+
+    Despues, haciendo uso de la ListaDoble con la funcion NuevasPosiciones,
+  se ordenaran todos los niveles previos al ultimo cuidando la distribucion.
+    El ultimo nivel tiene altas probabilidades de no tener suficientes nodos para
+    ser "llenado"; sin embargo, esto no representa un problema ya que el objetivo
+  de la funcion es eliminar niveles de mas: solo es necesario que los nodos restantes
+  se ubiquen respetando el orden de distribucion de claves del arbol.
+
+    Al final, la ListaDoble sera destruida ya que solo existe para ejecutar esta
+  funcion.}
+
+  var
+    LB:TipoListaDoble; //Utilizada para ejecutar el balance, se destruira al final
+    RC:TipoTriControl;
+    i,cantNodos:integer;
+    Reg:TipoTriNodo;
+    Pos,PosAux:TipoPos;
+    RLD:TipoDatosDoble;
+
+  begin
+    //Creo una ListaDoble para ayudar con el balance
+    CrearListaDoble(LB,'Balance',RutaArbol);
+    AbrirListaDoble(LB);
+
+    seek(ME.C,0);
+    read(ME.C,RC);
+
+    //Lleno la ListaDoble y cuento la cantidad de nodos
+    cantNodos:=0;
+    Pos:=PrimerNodoTrinario(ME);
+    While Pos <> _POSNULA
+    do begin
+      cantNodos:=cantNodos + 1;
+      seek(ME.I,Pos);
+      read(ME.I,Reg);
+      RLD.Clave:=Reg.Clave; //Cada nuevo registro de la lista tendra un nodo homonimo
+      RLD.InfoPos:=Pos;  //Cada nuevo registro almacenara la posicion de su homonimo
+      if not BuscarListaDoble(LB,Reg.Clave,PosAux)
+      then AgregarListaDoble(LB,RLD,PosAux);
+      Pos:=ProximoNodoTrinario(ME,Pos);
+    end;
+
+    //Elimino las relaciones (Padre, HijoDer, HijoIzq) entre todos los nodos
+    SetearPosicionesNulas(ME,RC.Raiz);
+
+    {Me paro en el nuevo nodo raiz: sera el resultado de sumarle 1 al cociente
+    de dividir la cantidad de nodos por 2}
+    Pos:=PrimeroListaDoble(LB);
+    for i:=1 to (cantNodos div 2)
+    do Pos:=ProximoListaDoble(LB,Pos);
+    CapturarListaDoble(LB,Pos,RLD);
+
+    //Establezco el nuevo nodo Raiz
+    RC.Raiz:=RLD.InfoPos;
+    seek(ME.C,0);
+    write(ME.C,RC);
+
+    NuevasPosiciones(ME,LB,Pos,_POSNULA,(cantNodos div 2) + 1);
+
+    CerrarListaDoble(LB);
+    DestruirListaDoble(LB);
+  end;
+
+{------------------------------------------------------------------------------}
+
+end.
+

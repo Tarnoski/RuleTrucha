@@ -1,0 +1,410 @@
+unit ME_Apuestas;
+
+interface
+
+  uses
+  LO_ListasDobles, ME_Jugadores, Formatos, SysUtils;
+
+  Const
+    _POSNULA = LO_ListasDobles._POSNULA;
+    _CLAVENULA = LO_ListasDobles._CLAVENULA;
+
+  Type
+    TipoPos = LO_ListasDobles.TipoPos;
+    TipoNick = ME_Jugadores.TipoNick;
+
+    TipoDatosApuesta = record
+                         Nomenclador:string[2];
+                         Valor:integer;
+                         Importe:real;
+                         IndexPos:TipoPos; //Posicion del homonimo en ListaDoble
+                       end;
+
+    TipoArchivoDatos = File of TipoDatosApuesta;
+
+    TipoIndiceApuesta = TipoDatosDoble;
+
+    TipoControlApuesta = TipoControlDoble;
+
+    TipoArchivoControl = File of TipoControlApuesta;
+
+    TipoApuesta = record
+                        D:TipoArchivoDatos; //Datos
+                        I:TipoListaDoble;
+                        C:TipoArchivoControl; //Registros de Control
+                      end;
+
+    Procedure CrearApuestas(var ME:TipoApuesta; Nombre,Ruta:string);
+    Procedure DestruirApuestas(var ME:TipoApuesta);
+    Procedure AbrirApuestas(var ME:TipoApuesta);
+    Procedure CerrarApuestas(var ME:TipoApuesta);
+    
+    Function ApuestasVacia(var ME:TipoApuesta):boolean;
+    Function BuscarJuegoApuestas(var ME:TipoApuesta; Juego:integer):Boolean;
+    Procedure InsertarJuegoApuestas(var ME:TipoApuesta; Juego:integer);
+    Procedure EliminarJuegoApuestas(var ME:TipoApuesta; Juego:integer);
+
+    Function PrimeraApuestaJugador(var ME:TipoApuesta):TipoDatosApuesta;
+    Function AnteriorApuestaJugador(var ME:TipoApuesta; Reg:TipoDatosApuesta):TipoDatosApuesta;
+    Function ProximaApuestaJugador(var ME:TipoApuesta; Reg:TipoDatosApuesta):TipoDatosApuesta;
+    Function UltimaApuestaJugador(var ME:TipoApuesta):TipoDatosApuesta;
+    Function ApuestasJugadorVacia(var ME:TipoApuesta):boolean;
+
+    Function BuscarApuestasJugador(var ME:TipoApuesta; Nick:TipoNick):Boolean;
+    Procedure CapturarApuestasJugador(var ME:TipoApuesta; Nick:TipoNick; var Reg:TipoDatosApuesta);
+    Procedure AgregarApuestasJugador(var ME:TipoApuesta; Reg:TipoDatosApuesta;
+      Nick:TipoNick; Juego:integer);
+    Procedure ModificarApuestasJugador(var ME:TipoApuesta; Nick:TipoNick; var Reg:TipoDatosApuesta);
+    Procedure EliminarApuestasJugador(var ME:TipoApuesta; Nick:TipoNick; Juego:integer);
+
+implementation
+
+
+{------------------------------------------------------------------------------}
+
+  Procedure CrearApuestas(var ME:TipoApuesta; Nombre,Ruta:string);
+  var
+    bControlOK,bControlDatos:boolean;
+    RC:TipoControlApuesta;
+
+  begin
+    CrearListaDoble(ME.I,Nombre + '-Indice',Ruta);
+    Assign(ME.D,Ruta + Nombre + '.dat');
+    Assign(ME.C,Ruta + Nombre + '.con');
+
+    {$I-} {Directiva de Compilacion: debilita el control de errores de delphi
+    En caso de error, no cierra la aplicacion}
+    Reset(ME.C);
+    bControlOK := (IOResult = 0);
+    Reset(ME.D);
+    bControlDatos := (IOResult = 0);
+    if (not(bControlOK)) and (not(bControlDatos))
+    then begin
+      Rewrite(ME.D);
+      Rewrite(ME.C);
+      AbrirListaDoble(ME.I);
+      RC:=ObtenerControlListaDoble(ME.I);
+      seek(ME.C,0);
+      write(ME.C,RC);
+      CerrarListaDoble(ME.I);
+    end;
+    Close(ME.D);
+    Close(ME.C);
+    {$i+}
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure DestruirApuestas(var ME:TipoApuesta);
+
+  begin
+    Erase(ME.D);
+    Erase(ME.C);
+    DestruirListaDoble(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure AbrirApuestas(var ME:TipoApuesta);
+
+  begin
+    Reset(ME.D);
+    Reset(ME.C);
+    AbrirListaDoble(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure CerrarApuestas(var ME:TipoApuesta);
+
+  begin
+    Close(ME.D);
+    Close(ME.C);
+    CerrarListaDoble(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function ApuestasVacia(var ME:TipoApuesta):boolean;
+  var
+    RC:TipoControlApuesta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    IniciarListaDobleExistente(ME.I,RC);
+    ApuestasVacia:=ListaDobleVacia(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function BuscarJuegoApuestas(var ME:TipoApuesta; Juego:integer):Boolean;
+  var
+    RC:TipoControlApuesta;
+    Pos:TipoPos;
+    Clave:TipoClave;
+
+  begin
+     //Obtengo e inicio la lista de juegos
+    seek(ME.C,0);
+    read(ME.C,RC);
+    IniciarListaDobleExistente(ME.I,RC);
+    Clave:=PreCerosInteger(8,Juego);
+    BuscarJuegoApuestas:=BuscarListaDoble(ME.I,Clave,Pos);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure InsertarJuegoApuestas(var ME:TipoApuesta; Juego:integer);
+  var
+    Reg:TipoIndiceApuesta;
+    RC:TipoControlApuesta;
+    Pos:TipoPos;
+
+  begin
+    //Obtengo e inicio la lista de juegos
+    seek(ME.C,0);
+    read(ME.C,RC);
+    IniciarListaDobleExistente(ME.I,RC);
+
+    //Lleno los datos del registro del juego
+    Reg.Clave:=PreCerosInteger(8,Juego);
+    Reg.InfoPos:=FileSize(ME.C);
+
+    //Agrego el juego a su lista
+    if BuscarListaDoble(ME.I,Reg.Clave,Pos)
+    then AgregarListaDoble(ME.I,Reg,Pos);
+
+    //Guardo la lista de juegos actualizada
+    RC:=ObtenerControlListaDoble(ME.I);
+    seek(ME.C,0);
+    write(ME.C,RC);
+
+    //Guardo elel nuevo juego
+    GenerarNuevaListaDoble(ME.I,RC);
+    seek(ME.C,Reg.InfoPos);
+    write(ME.C,RC);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure EliminarJuegoApuestas(var ME:TipoApuesta; Juego:integer);
+  var
+    RC:TipoControlApuesta;
+    Clave:TipoClave;
+    Pos:TipoPos;
+
+  begin
+    //Obtengo e inicio la lista de juegos
+    seek(ME.C,0);
+    read(ME.C,RC);
+    IniciarListaDobleExistente(ME.I,RC);
+
+    //Elimino el juego de la lista
+    Clave:=PreCerosInteger(8,Juego);
+    if BuscarListaDoble(ME.I,Clave,Pos)
+    then EliminarListaDoble(ME.I,Pos);
+
+    //Guardo la lista de juegos actualizada
+    RC:=ObtenerControlListaDoble(ME.I);
+    seek(ME.C,0);
+    write(ME.C,RC);
+  end;
+
+{------------------------------------------------------------------------------}
+
+   Function PrimeraApuestaJugador(var ME:TipoApuesta):TipoDatosApuesta;
+   var
+    RI:TipoIndiceApuesta;
+    Reg:TipoDatosApuesta;
+
+   begin
+    CapturarListaDoble(ME.I,PrimeroListaDoble(ME.I),RI);
+    seek(ME.D,RI.InfoPos);
+    read(ME.D,Reg);
+    PrimeraApuestaJugador:=Reg;
+   end;
+
+{------------------------------------------------------------------------------}
+
+   Function AnteriorApuestaJugador(var ME:TipoApuesta; Reg:TipoDatosApuesta):TipoDatosApuesta;
+   var
+    RI:TipoIndiceApuesta;
+
+   begin
+    CapturarListaDoble(ME.I,AnteriorListaDoble(ME.I,Reg.IndexPos),RI);
+    seek(ME.D,RI.InfoPos);
+    read(ME.D,Reg);
+    AnteriorApuestaJugador:=Reg;
+   end;
+
+{------------------------------------------------------------------------------}
+
+   Function ProximaApuestaJugador(var ME:TipoApuesta; Reg:TipoDatosApuesta):TipoDatosApuesta;
+   var
+    RI:TipoIndiceApuesta;
+
+   begin
+    CapturarListaDoble(ME.I,ProximoListaDoble(ME.I,Reg.IndexPos),RI);
+    seek(ME.D,RI.InfoPos);
+    read(ME.D,Reg);
+    ProximaApuestaJugador:=Reg;
+   end;
+
+{------------------------------------------------------------------------------}
+
+   Function UltimaApuestaJugador(var ME:TipoApuesta):TipoDatosApuesta;
+   var
+    RI:TipoIndiceApuesta;
+    Reg:TipoDatosApuesta;
+
+   begin
+    CapturarListaDoble(ME.I,UltimoListaDoble(ME.I),RI);
+    seek(ME.D,RI.InfoPos);
+    read(ME.D,Reg);
+    UltimaApuestaJugador:=Reg;
+   end;
+
+{------------------------------------------------------------------------------}
+
+   Function ApuestasJugadorVacia(var ME:TipoApuesta):boolean;
+   begin
+    ApuestasJugadorVacia:=ListaDobleVacia(ME.I);
+   end;
+
+{------------------------------------------------------------------------------}
+
+  Function BuscarApuestasJugador(var ME:TipoApuesta; Nick:TipoNick):Boolean;
+  var
+    Pos:TipoPos;
+
+  begin
+    BuscarApuestasJugador:=BuscarListaDoble(ME.I,Nick,Pos);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure CapturarApuestasJugador(var ME:TipoApuesta; Nick:TipoNick; var Reg:TipoDatosApuesta);
+  var
+    Pos:TipoPos;
+    RI:TipoIndiceApuesta;
+
+  begin
+    if BuscarListaDoble(ME.I,Nick,Pos)
+    then CapturarListaDoble(ME.I,Pos,RI);
+    seek(ME.D,RI.InfoPos);
+    read(ME.D,Reg);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure IniciarJuegoApuestas(var ME:TipoApuesta; Juego:TipoClave);
+  var
+    RI:TipoIndiceApuesta;
+    RC:TipoControlApuesta;
+    Pos:TipoPos;
+
+  begin
+    //Inicio la lista de juegos
+    seek(ME.C,0);
+    read(ME.C,RC);
+    IniciarListaDobleExistente(ME.I,RC);
+
+    //Busco el juego inicio su lista
+    if BuscarListaDoble(ME.I,Juego,Pos)
+    then CapturarListaDoble(ME.I,Pos,RI);
+
+    seek(ME.C,RI.InfoPos);
+    read(ME.C,RC);
+    IniciarListaDobleExistente(ME.I,RC);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure ActualizarRegistroControl(var ME:TipoApuesta; Clave:TipoClave);
+  var
+    RI:TipoIndiceApuesta;
+    RCDatos,RCIndice:TipoControlApuesta;
+    Pos:TipoPos;
+
+  begin
+    //Obtengo el registro de control del juego actual
+    RCDatos:=ObtenerControlListaDoble(ME.I);
+
+    //Obtengo el registro de control de la lista de juegos y la inicio
+    seek(ME.C,0);
+    read(ME.C,RCIndice);
+    IniciarListaDobleExistente(ME.I,RCIndice);
+
+    //Obtengo el registro del juego
+    if BuscarListaDoble(ME.I,Clave,Pos)
+    then CapturarListaDoble(ME.I,Pos,RI);
+
+    //Actualizo el registro de control del juego
+    seek(ME.C,RI.InfoPos);
+    write(ME.C,RCDatos);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure AgregarApuestasJugador(var ME:TipoApuesta; Reg:TipoDatosApuesta;
+    Nick:TipoNick; Juego:integer);
+
+  var
+    Pos:TipoPos;
+    RI:TipoIndiceApuesta;
+    Clave:TipoClave;
+
+  begin
+    Clave:=PreCerosInteger(8,Juego);
+    IniciarJuegoApuestas(ME,Clave);
+
+    //Guardo la posicion de los datos de la apuesta en el registro indice
+    RI.Clave:=Nick;
+    RI.InfoPos:=FileSize(ME.D);
+
+    //Guardo el nuevo registro indice y actualizo la lista de apuestas
+    if not BuscarListaDoble(ME.I,RI.Clave,Pos)
+    then AgregarListaDoble(ME.I,RI,Pos);
+    ActualizarRegistroControl(ME,Clave);
+
+    //Guardo la posicion del registro indice y los datos de la nueva apuesta
+    Reg.IndexPos:=Pos;
+    seek(ME.D,RI.InfoPos);
+    write(ME.D,Reg);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure ModificarApuestasJugador(var ME:TipoApuesta; Nick:TipoNick; var Reg:TipoDatosApuesta);
+  var
+    Pos:TipoPos;
+    RI:TipoIndiceApuesta;
+
+  begin
+    if BuscarListaDoble(ME.I,Nick,Pos)
+    then ModificarListaDoble(ME.I,Pos,RI);
+    seek(ME.D,RI.InfoPos);
+    write(ME.D,Reg);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure EliminarApuestasJugador(var ME:TipoApuesta; Nick:TipoNick; Juego:integer);
+  var
+    RI:TipoIndiceApuesta;
+    Pos:TipoPos;
+    Clave:TipoClave;
+
+  begin
+    Clave:=PreCerosInteger(8,Juego);
+    IniciarJuegoApuestas(ME,Clave);
+    //Elimino el nuevo registro indice y actualizo la lista de apuestas
+    if BuscarListaDoble(ME.I,RI.Clave,Pos)
+    then EliminarListaDoble(ME.I,Pos);
+    ActualizarRegistroControl(ME,Clave);
+  end;
+
+{------------------------------------------------------------------------------}
+
+end.

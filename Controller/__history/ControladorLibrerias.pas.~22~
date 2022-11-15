@@ -1,0 +1,56 @@
+unit ControladorLibrerias;
+
+interface
+
+uses
+  System.SysUtils, System.Classes, Vcl.Forms,
+  LO_ArbolAVL, LO_ArbolTrinario, LO_ListasDobles, LO_ListasSimples, LO_Colas;
+
+const
+  Ruta='D:\Proyecto Final\09-03-21 Arbol AVL Completo\Data\';
+  RutaTri='Ganadores\';
+  RutaAVL='Jugadores\';
+  RutaLD='Apuestas\';
+  RutaLS='Ruleta\';
+  RutaCola='Cola\';
+
+type
+  TipoRuta = String;
+  procedure Iniciar;
+  procedure Cerrar;
+
+implementation
+
+uses
+  Unit1, Unit3, Unit4, Unit5, Unit6;
+
+  procedure Iniciar;
+  begin
+    CrearAVL(Unit1.ME,'Jugadores',Ruta + RutaAVL);
+    AbrirAVL(Unit1.ME);
+    CrearTrinario(Unit3.ME,'Ganadores',Ruta + RutaTri);
+    AbrirTrinario(Unit3.ME);
+    CrearListaDoble(Unit4.ME,'Apuestas',Ruta + RutaLD);
+    AbrirListaDoble(Unit4.ME);
+    CrearListaSimple(Unit5.ME,'Ruleta',Ruta + RutaLS);
+    AbrirListaSimple(Unit5.ME);
+    CrearCola(Unit6.ME,'Cola',Ruta + RutaLS);
+    AbrirCola(Unit6.ME);
+  end;
+
+  procedure Cerrar;
+  begin
+    CerrarAVL(Unit1.ME);
+    DestruirAVL(Unit1.ME);
+    CerrarTrinario(Unit3.ME);
+    DestruirTrinario(Unit3.ME);
+    CerrarListaDoble(Unit4.ME);
+    DestruirListaDoble(Unit4.ME);
+    CerrarListaSimple(Unit5.ME);
+    DestruirListaSimple(Unit5.ME);
+    CerrarCola(Unit6.ME);
+    DestruirCola(Unit6.ME);
+    Application.Terminate();
+  end;
+
+end.

@@ -1,0 +1,452 @@
+unit ME_Ruleta;
+
+interface
+
+uses
+  LO_Colas, Formatos, SysUtils;
+const
+  _POSNULA = LO_Colas._POSNULA;
+  _CLAVENULA = LO_Colas._CLAVENULA;
+  
+type
+  TipoBolilla = -1..36;
+  TipoEstado = 0..5;
+
+  TipoNomenclador = record
+                      Nomenclador:string[2];
+                      Premio:integer;
+                    end;
+  TipoRegRuleta = record
+                    Juego:integer;
+                    FechaHora:TDateTime;
+                    Estado:TipoEstado;
+                    Bolilla:TipoBolilla;
+                  end;
+  TipoArchivoRuleta = File of TipoRegRuleta;
+
+  TipoNomencladores = record
+                        RojoNegro:TipoNomenclador;
+                        ParImpar:TipoNomenclador;
+                        PasaFalta:TipoNomenclador;
+                        Docena:TipoNomenclador;
+                        Columna:TipoNomenclador;
+                        Pleno:TipoNomenclador;
+                      end;
+
+  TipoControlRuleta = record
+                        UltJuego:integer;
+                        ApuestaMin,ApuestaMax:real;
+                        Nomencladores:TipoNomencladores;
+                      end;
+
+  ArchivoControlRuleta = File of TipoControlRuleta;
+
+  TipoRuleta = record
+                 D:TipoArchivoRuleta;
+                 C:ArchivoControlRuleta;
+                 I:TipoCola;
+               end;
+
+  Procedure CrearRuleta(var ME:TipoRuleta; Nombre,Ruta:string);
+  Procedure AbrirRuleta(var ME:TipoRuleta);
+  Procedure CerrarRuleta(var ME:TipoRuleta);
+  Procedure DestruirRuleta(var ME:TipoRuleta);
+
+  Function BuscarJuego(var ME:TipoRuleta; Juego:integer):boolean;
+  Procedure ObtenerJuego(var ME:TipoRuleta; var Reg:TipoRegRuleta);
+  Procedure UltimoJuego(var ME:TipoRuleta; var Reg:TipoRegRuleta);
+  Procedure BajaJuego(var ME:TipoRuleta);
+
+  Procedure NuevoJuego(var ME:TipoRuleta);
+  Procedure Apuestas(var ME:TipoRuleta);
+  Procedure NoVaMas(var ME:TipoRuleta);
+  Procedure BolillaTirada(var ME:TipoRuleta; Resultado:TipoBolilla);
+  Procedure Premios(var ME:TipoRuleta);
+  Procedure FinJuego(var ME:TipoRuleta);
+
+  Function ApuestaMinima(var ME:TipoRuleta):real;
+  Function ApuestaMaxima(var ME:TipoRuleta):real;
+
+  Function RojoNegro(var ME:TipoRuleta):TipoNomenclador;
+  Function ParImpar(var ME:TipoRuleta):TipoNomenclador;
+  Function PasaFalta(var ME:TipoRuleta):TipoNomenclador;
+  Function Docena(var ME:TipoRuleta):TipoNomenclador;
+  Function Columna(var ME:TipoRuleta):TipoNomenclador;
+  Function Pleno(var ME:TipoRuleta):TipoNomenclador;
+
+implementation
+
+  Procedure CrearRuleta(var ME:TipoRuleta; Nombre,Ruta:string);
+  var
+    RC:TipoControlRuleta;
+    bControlOK,bControlDatos:boolean;
+
+  begin
+    Assign(ME.D,Ruta + Nombre + '.dat');
+    Assign(ME.C,Ruta + Nombre + '.con');
+    {$I-} {Directiva de Compilacion: debilita el control de errores de delphi
+    En caso de error, no cierra la aplicacion}
+    Reset(ME.C);
+    bControlOK := (IOResult = 0);
+    Reset(ME.D);
+    bControlDatos := (IOResult = 0);
+    if (not(bControlOK)) and (not(bControlDatos))
+    then begin
+      Rewrite(ME.D);
+      Rewrite(ME.C);
+
+      RC.UltJuego:=0;
+      RC.ApuestaMin:=50;
+      RC.ApuestaMax:=1000;
+
+      RC.Nomencladores.RojoNegro.Nomenclador:='RN';
+      RC.Nomencladores.RojoNegro.Premio:=1;
+
+      RC.Nomencladores.ParImpar.Nomenclador:='PI';
+      RC.Nomencladores.ParImpar.Premio:=1;
+
+      RC.Nomencladores.PasaFalta.Nomenclador:='PF';
+      RC.Nomencladores.PasaFalta.Premio:=1;
+
+      RC.Nomencladores.Docena.Nomenclador:='DO';
+      RC.Nomencladores.Docena.Premio:=2;
+
+      RC.Nomencladores.Columna.Nomenclador:='CO';
+      RC.Nomencladores.Columna.Premio:=2;
+
+      RC.Nomencladores.Pleno.Nomenclador:='XX';
+      RC.Nomencladores.Pleno.Premio:=35;
+
+      seek(ME.C,0);
+      write(ME.C,RC);
+    end;
+    Close(ME.D);
+    Close(ME.C);
+    CrearCola(ME.I,Nombre + '-Indice',Ruta);
+    {$i+}
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure AbrirRuleta(var ME:TipoRuleta);
+  begin
+    Reset(ME.D);
+    Reset(ME.C);
+    AbrirCola(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure CerrarRuleta(var ME:TipoRuleta);
+  begin
+    Close(ME.D);
+    Close(ME.C);
+    CerrarCola(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure DestruirRuleta(var ME:TipoRuleta);
+  begin
+    Erase(ME.D);
+    Erase(ME.C);
+    DestruirCola(ME.I);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function BuscarJuego(var ME:TipoRuleta; Juego:integer):boolean;
+  var
+    Reg:TipoRegCola;
+    Clave,PrimeraClave:TipoClave;
+    Encont:boolean;
+
+  begin
+    Clave:=PreCerosInteger(8,Juego);
+    PrimeraClave:=_CLAVENULA;
+    Encont:=False;
+    if not ColaVacia(ME.I)
+    then begin
+      Frente(ME.I,Reg);
+      PrimeraClave:=Reg.Clave;
+      repeat
+        if Reg.Clave = Clave
+        then Encont:=True
+        else begin
+          Decolar(ME.I);
+          Encolar(ME.I,Reg);
+          Frente(ME.I,Reg);
+        end;
+      until (Reg.Clave = PrimeraClave) or Encont;
+    end;
+    BuscarJuego:=Encont;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure NuevoJuego(var ME:TipoRuleta);
+  var
+    RCola:TipoRegCola;
+    Reg:TipoRegRuleta;
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+
+    RC.UltJuego:=RC.UltJuego + 1;
+
+    Reg.Juego:=RC.UltJuego;
+    Reg.Estado:=0;
+    Reg.Bolilla:=-1;
+
+    RCola.Clave:=inttostr(Reg.Juego);
+    RCola.InfoPos:=FileSize(ME.D);
+    Encolar(ME.I,RCola);
+
+    seek(ME.D,RCola.InfoPos);
+    write(ME.D,Reg);
+    seek(ME.C,0);
+    write(ME.C,RC);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure ObtenerJuego(var ME:TipoRuleta; var Reg:TipoRegRuleta);
+  var
+    RCola:TipoRegCola;
+
+  begin
+    Frente(ME.I,RCola);
+    seek(ME.D,RCola.InfoPos);
+    read(ME.D,Reg);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure UltimoJuego(var ME:TipoRuleta; var Reg:TipoRegRuleta);
+  var
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    if BuscarJuego(ME,RC.UltJuego)
+    then ObtenerJuego(ME,Reg);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure BajaJuego(var ME:TipoRuleta);
+  begin
+    Decolar(ME.I);
+  end;  
+
+{------------------------------------------------------------------------------}
+
+  Procedure Apuestas(var ME:TipoRuleta);
+  var
+    RCola:TipoRegCola;
+    Reg:TipoRegRuleta;
+
+
+  begin
+    Frente(ME.I,RCola);
+    seek(ME.D,RCola.InfoPos);
+    read(ME.D,Reg);
+
+    Reg.Estado:=1;
+    Reg.FechaHora:=Now;
+    
+    seek(ME.D,RCola.InfoPos);
+    write(ME.D,Reg);
+    Decolar(ME.I);
+    Encolar(ME.I,RCola);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure NoVaMas(var ME:TipoRuleta);
+  var
+    RCola:TipoRegCola;
+    Reg:TipoRegRuleta;
+
+
+  begin
+    Frente(ME.I,RCola);
+    seek(ME.D,RCola.InfoPos);
+    read(ME.D,Reg);
+
+    Reg.Estado:=2;
+
+    seek(ME.D,RCola.InfoPos);
+    write(ME.D,Reg);
+    Decolar(ME.I);
+    Encolar(ME.I,RCola);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure BolillaTirada(var ME:TipoRuleta; Resultado:TipoBolilla);
+  var
+    RCola:TipoRegCola;
+    Reg:TipoRegRuleta;
+
+
+  begin
+    Frente(ME.I,RCola);
+    seek(ME.D,RCola.InfoPos);
+    read(ME.D,Reg);
+
+    Reg.Estado:=3;
+    Reg.Bolilla:=Resultado;
+
+    seek(ME.D,RCola.InfoPos);
+    write(ME.D,Reg);
+    Decolar(ME.I);
+    Encolar(ME.I,RCola);
+  end;
+
+
+{------------------------------------------------------------------------------}
+
+  Procedure Premios(var ME:TipoRuleta);
+  var
+    RCola:TipoRegCola;
+    Reg:TipoRegRuleta;
+
+
+  begin
+    Frente(ME.I,RCola);
+    seek(ME.D,RCola.InfoPos);
+    read(ME.D,Reg);
+
+    Reg.Estado:=4;
+
+    seek(ME.D,RCola.InfoPos);
+    write(ME.D,Reg);
+    Decolar(ME.I);
+    Encolar(ME.I,RCola);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure FinJuego(var ME:TipoRuleta);
+  var
+    RCola:TipoRegCola;
+    Reg:TipoRegRuleta;
+
+
+  begin
+    Frente(ME.I,RCola);
+    seek(ME.D,RCola.InfoPos);
+    read(ME.D,Reg);
+
+    Reg.Estado:=5;
+
+    seek(ME.D,RCola.InfoPos);
+    write(ME.D,Reg);
+    Decolar(ME.I);
+    Encolar(ME.I,RCola);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function ApuestaMinima(var ME:TipoRuleta):real;
+  var
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    ApuestaMinima:=RC.ApuestaMin;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function ApuestaMaxima(var ME:TipoRuleta):real;
+  var
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    ApuestaMaxima:=RC.ApuestaMax;
+  end;
+
+
+{------------------------------------------------------------------------------}
+
+  Function RojoNegro(var ME:TipoRuleta):TipoNomenclador;
+  var
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    RojoNegro:=RC.Nomencladores.RojoNegro;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function ParImpar(var ME:TipoRuleta):TipoNomenclador;
+  var
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    ParImpar:=RC.Nomencladores.ParImpar;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function PasaFalta(var ME:TipoRuleta):TipoNomenclador;
+  var
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    PasaFalta:=RC.Nomencladores.PasaFalta;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function Docena(var ME:TipoRuleta):TipoNomenclador;
+  var
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    Docena:=RC.Nomencladores.Docena;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function Columna(var ME:TipoRuleta):TipoNomenclador;
+  var
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    Columna:=RC.Nomencladores.Columna;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function Pleno(var ME:TipoRuleta):TipoNomenclador;
+  var
+    RC:TipoControlRuleta;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,RC);
+    Pleno:=RC.Nomencladores.Pleno;
+  end;
+
+{------------------------------------------------------------------------------}  
+
+end.

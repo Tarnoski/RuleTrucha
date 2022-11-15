@@ -1,0 +1,317 @@
+unit TDA_Cuentas;
+
+interface
+
+uses
+  LO_HashCerrado, Formatos, StrUtils, SysUtils;
+
+const
+
+  Alta = 'Alta Cuenta';
+  Compra = 'Compra fichas';
+  Retirar = 'Retirar saldo';
+  Anular = 'Anular saldo';
+  Apuesta = 'Apuesta Juego ';
+  Premio = 'Premio Juego ';
+  Regalo = 'Regalo Casa';
+  Baja = 'Baja Cuenta';
+
+  _POSNULA = LO_HashCerrado._POSNULA;
+  _CLAVENULA = LO_HashCerrado._CLAVENULA;
+
+type
+  TipoNick = TipoClave;
+  TipoPos = LO_HashCerrado.TipoPos;
+  TipoRegCuenta = record
+                  Nick:TipoNick; //ID del jugador en el sistema
+                  FechaHora:TDateTime; //Fecha y Hora de su registro
+                  Concepto:string[100]; //Identifica la accion
+                  Debe,Haber,Saldo:real; //Datos del asiento
+                  Enlace:TipoPos;
+                end;
+
+  TipoArchivoCuenta = file of TipoRegCuenta;
+
+  TipoCuentaControl = file of real;
+
+  TipoCuenta = record
+                  D:TipoArchivoCuenta;
+                  C:TipoCuentaControl;
+                  H:TipoHashCerrado;
+                end;
+
+  Procedure CrearCuentas(var ME:TipoCuenta; Nombre,Ruta:string);
+  Procedure AbrirCuentas(var ME:TipoCuenta);
+  Procedure CerrarCuentas(var ME:TipoCuenta);
+  Procedure DestruirCuentas(var ME:TipoCuenta);
+
+  Function BuscarCuenta(var ME:TipoCuenta; Nick:TipoNick):boolean;
+  Function SaldoCuenta(var ME:TipoCuenta; Nick:TipoNick):real;
+  Procedure AltaCuenta(var ME:TipoCuenta; Nick:TipoNick; Monto:Real);
+  Procedure NuevoAsiento(var ME:TipoCuenta; Nick:TipoNick; C:string; M:real);
+  Procedure BajaCuenta(var ME:TipoCuenta; Nick:TipoNick);
+
+  Function PrimerAsiento(var ME:TipoCuenta; Nick:TipoNick):TipoRegCuenta;
+  Function SiguienteAsiento(var ME:TipoCuenta; Reg:TipoRegCuenta):TipoRegCuenta;
+
+  Function ObtenerMinimo(var ME:TipoCuenta):real;
+  Procedure DefinirMinimo(var ME:TipoCuenta; Monto:real);
+
+implementation
+
+  Procedure CrearCuentas(var ME:TipoCuenta; Nombre,Ruta:string);
+  var
+    Num:real;
+    bControlOK,bControlDatos:boolean;
+
+  begin
+    Num:=0;
+    Assign(ME.D,Ruta + Nombre + '.info');
+    Assign(ME.C,Ruta + Nombre + '.min');
+    {$I-} {Directiva de Compilacion: debilita el control de errores de delphi
+    En caso de error, no cierra la aplicacion}
+    Reset(ME.C);
+    bControlOK := (IOResult = 0);
+    Reset(ME.D);
+    bControlDatos := (IOResult = 0);
+    if (not(bControlOK)) and (not(bControlDatos))
+    then begin
+      Rewrite(ME.D);
+      Rewrite(ME.C);
+      seek(ME.C,0);
+      write(ME.C,Num);
+    end;
+    Close(ME.D);
+    Close(ME.C);
+    CrearHashCerrado(ME.H,Nombre + '-Hash',Ruta);
+    {$i+}
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure AbrirCuentas(var ME:TipoCuenta);
+  begin
+    Reset(ME.D);
+    Reset(ME.C);
+    AbrirHashCerrado(ME.H);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure CerrarCuentas(var ME:TipoCuenta);
+  begin
+    Close(ME.D);
+    Close(ME.C);
+    CerrarHashCerrado(ME.H);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure DestruirCuentas(var ME:TipoCuenta);
+  begin
+    Erase(ME.D);
+    Erase(ME.C);
+    DestruirHashCerrado(ME.H);
+  end;
+
+{------------------------------------------------------------------------------}
+
+
+  Function BuscarCuenta(var ME:TipoCuenta; Nick:TipoNick):boolean;
+  var
+    Pos:TipoPos;
+
+  begin
+    BuscarCuenta:=BuscarHashCerrado(ME.H,Nick,Pos);
+  end;
+
+{------------------------------------------------------------------------------}  
+  
+  Function SaldoCuenta(var ME:TipoCuenta; Nick:TipoNick):real;
+  var
+    Pos:TipoPos;
+    RHash:TipoDatosCerrado;
+    Reg:TipoRegCuenta;
+
+  begin
+    if BuscarHashCerrado(ME.H,Nick,Pos)
+    then CapturarHashCerrado(ME.H,Pos,RHash);
+    Pos:=RHash.InfoPos;
+
+    repeat
+      seek(ME.D,Pos);
+      read(ME.D,Reg);
+      if Reg.Enlace <> _POSNULA
+      then Pos:=Reg.Enlace;
+    until Pos = _POSNULA;
+    SaldoCuenta:=Reg.Saldo;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure AltaCuenta(var ME:TipoCuenta; Nick:TipoNick; Monto:Real);
+  var
+    Pos:TipoPos;
+    Reg:TipoDatosCerrado;
+    Minimo:real;
+    RCuenta:TipoRegCuenta;
+
+  begin
+    //Obtengo el monto minimo para abrir una cuenta
+    seek(ME.C,0);
+    read(ME.C,Minimo);
+
+    //Ingreso el registro indice en el archivo Hash, y guardo la posicion del primer asiento
+    Reg.Clave:=Nick;
+    Reg.InfoPos:=FileSize(ME.D);
+    if not BuscarHashCerrado(ME.H,Nick,Pos)
+    then AgregarHashCerrado(ME.H,Pos,Reg);
+
+    //Lleno, con los datos de la apertura de la cuenta, el nuevo asiento y lo guardo
+    RCuenta.Nick:=Nick;
+    RCuenta.FechaHora:=Now;
+    RCuenta.Concepto:=Alta;
+    if Monto < Minimo
+    then RCuenta.Debe:= Minimo
+    else RCuenta.Debe:= Monto;
+    RCuenta.Haber:=0;
+    RCuenta.Saldo:=RCuenta.Debe;
+    RCuenta.Enlace:=_POSNULA;
+    seek(ME.D,Reg.InfoPos);
+    read(ME.D,RCuenta);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure NuevoAsiento(var ME:TipoCuenta; Nick:TipoNick; C:string; M:real);
+  var
+    Pos:TipoPos;
+    RHash:TipoDatosCerrado;
+    Reg,RCuenta:TipoRegCuenta;
+
+  begin
+    if BuscarHashCerrado(ME.H,Nick,Pos)
+    then CapturarHashCerrado(ME.H,Pos,RHash);
+    Pos:=RHash.InfoPos;
+
+    //Obtengo el ultimo registro de la lista
+    repeat
+      seek(ME.D,Pos);
+      read(ME.D,Reg);
+      if Reg.Enlace <> _POSNULA
+      then Pos:=Reg.Enlace;
+    until Reg.Enlace = _POSNULA;
+    Reg.Enlace:=FileSize(ME.D);
+
+    //Lleno los datos del nuevo asiento y guardo
+    RCuenta.Nick:=Nick;
+    RCuenta.FechaHora:=Now;
+    RCuenta.Concepto:=C;
+
+    if (LeftStr(C,7)= 'Apuesta') or (C=Anular) or (C=Retirar)
+    then RCuenta.Haber:=M
+    else RCuenta.Haber:=0;
+
+    if RCuenta.Haber > 0
+    then RCuenta.Debe:= 0
+    else RCuenta.Debe:= M;
+
+    RCuenta.Saldo:=Reg.Saldo - RCuenta.Haber + RCuenta.Debe;
+    RCuenta.Enlace:=_POSNULA;
+
+    seek(ME.D,Pos);
+    read(ME.D,Reg);
+    seek(ME.D,Reg.Enlace);
+    read(ME.D,RCuenta);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure BajaCuenta(var ME:TipoCuenta; Nick:TipoNick);
+  var
+    Pos:TipoPos;
+    RHash:TipoDatosCerrado;
+    Reg,RCuenta:TipoRegCuenta;
+
+  begin
+
+    //Obtengo registro indice del archivo Hash y lo elimino
+    if BuscarHashCerrado(ME.H,Nick,Pos)
+    then CapturarHashCerrado(ME.H,Pos,RHash);
+    Pos:=RHash.InfoPos;
+    EliminarHashCerrado(ME.H,Pos);
+
+    //Obtengo el ultimo registro de la lista
+    repeat
+      seek(ME.D,Pos);
+      read(ME.D,Reg);
+      if Reg.Enlace <> _POSNULA
+      then Pos:=Reg.Enlace;
+    until Reg.Enlace = _POSNULA;
+    Reg.Enlace:=FileSize(ME.D);
+
+    //Lleno, con los datos de la apertura de la cuenta, el nuevo asiento y lo guardo
+    RCuenta.Nick:=Nick;
+    RCuenta.FechaHora:=Now;
+    RCuenta.Concepto:=Baja;
+    RCuenta.Debe:= 0;
+    RCuenta.Haber:=Reg.Saldo;
+    RCuenta.Saldo:=Reg.Saldo - RCuenta.Haber + RCuenta.Debe;
+    RCuenta.Enlace:=_POSNULA;
+
+    seek(ME.D,Pos);
+    read(ME.D,Reg);
+    seek(ME.D,Reg.Enlace);
+    read(ME.D,RCuenta);
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function PrimerAsiento(var ME:TipoCuenta; Nick:TipoNick):TipoRegCuenta;
+  var
+    Pos:TipoPos;
+    RHash:TipoDatosCerrado;
+    Reg:TipoRegCuenta;
+
+  begin
+    //Obtengo registro indice del archivo Hash y lo elimino
+    if BuscarHashCerrado(ME.H,Nick,Pos)
+    then CapturarHashCerrado(ME.H,Pos,RHash);
+    Pos:=RHash.InfoPos;
+    seek(ME.D,Pos);
+    read(ME.D,Reg);
+    PrimerAsiento:=Reg;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function SiguienteAsiento(var ME:TipoCuenta; Reg:TipoRegCuenta):TipoRegCuenta;
+
+  begin
+    seek(ME.D,Reg.Enlace);
+    read(ME.D,Reg);
+    SiguienteAsiento:=Reg;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Function ObtenerMinimo(var ME:TipoCuenta):real;
+  var
+    Monto:real;
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,Monto);
+    ObtenerMinimo:=Monto;
+  end;
+
+{------------------------------------------------------------------------------}
+
+  Procedure DefinirMinimo(var ME:TipoCuenta; Monto:real);
+
+  begin
+    seek(ME.C,0);
+    read(ME.C,Monto);
+  end;
+
+end.
